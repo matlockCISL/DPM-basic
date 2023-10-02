@@ -54,13 +54,7 @@ tog.patch2D = 1; % Toggle patchwise 2D filtering of image
 %% Update save label
 svlbl = ['Proc_' svlbl];
 if(tog.halo)
-    svlbl = [svlbl '_Halo'];
-end
-if(tog.patch2D)
-    svlbl = [svlbl '_patch2DFit'];
-else
-    svlbl = [svlbl '_Global2DFit'];
-end
+    sv
 %% Load Background image and extract reference phase, amplitude
 
 for nt = 1:nref
@@ -166,9 +160,12 @@ for nf = lFOV(1):lFOV(2)
         %% Save data into .mat, tiff images
 
         % Make save folder containing processing parameters, grating, etc.
+        if(tog.halo)
         svfol = [svlbl '_NA' num2str(pm.NA) '_grt' ...
                   num2str(pm.grt/pm.Mo * 1e3) '_ys' num2str(pm.yshift)];
+        else
 
+        end
 
         mkdir([svdir num2str(nf) '\' svfol]);
         % save([svdir num2str(nf) '\' svfol '\Reconstruction_' num2str(nm-1) '.mat'],'Phi_f', 'A_f', 'pm', '-v7.3');
