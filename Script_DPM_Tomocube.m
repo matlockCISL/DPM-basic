@@ -12,32 +12,33 @@
 clear all;
 close all;
 clc;
+
+normImg = @(img) (img - min(min(img)))./(max(max(img)) - min(min(img)));
 %% Add folders to path
 addpath('Functions\');  % Adds folder containing relevant processing functions
 
 %% Folder Name Declarations
 
 % Set data, reference, and save directories
-genfol = ['G:\My Drive\Data\RBC_SCD\220608\25x_430nm_p95_112uW_RBC_']; % Generic folder for raw data location
-reffol = 'G:\My Drive\Data\RBC_SCD\220608\25x_430nm_p95_112uW_Blank_1'; % Folder location for blank/reference image
-svdir = 'G:\My Drive\Data\RBC_SCD\220608\25x_430nm_p95_112uW_RBC_Test_Processed\FOV_'; % save folder location
-svlbl = 'test';  % User-defined label to add to save folder name
+genfol = ['G:\My Drive\Data\Grating Measurements\250902\Raw Data\Wvgd_Lg_1']; % Generic folder for raw data location
+svdir = 'G:\My Drive\Data\Grating Measurements\250902\Proc\Wvgd_Lg_'; % save folder location
+svlbl = 'tomo_test';  % User-defined label to add to save folder name
 
-lbl_data = 'Raw';  % Name for raw data measurements (assumed to be identical or the same name with different numbers for all folders used in processing)
-lFOV = [1, 1];  % Set FOV range to process for folder (use [1 1] for processing only first FOV)
+lbl_data = '001';  % Name for raw data measurements (assumed to be identical or the same name with different numbers for all folders used in processing)
+lFOV = [1,1];  % Set FOV range to process for folder (use [1 1] for processing only first FOV)
 nmeas = 1;  % Number of images to process within each FOV folder
 nref = 1;  % Number of reference images to process within the reffol location
 
 %% Variable Declarations
 
 % Microscope parameters
-pm.dx = 4.5;  % x Pixel size at camera plane (um)
-pm.dy = 4.5;  % y Pixel size at camera plane (um)
-pm.Mo = 25;  % Microscope objective magnification
-pm.Mf = 300/75;  % 4F System magnification
+pm.dx = 5.5385;  % x Pixel size at camera plane (um)
+pm.dy = 5.5385;  % y Pixel size at camera plane (um)
+pm.Mo = 58.3;  % Microscope objective magnification
+pm.Mf = 1;  % 4F System magnification
 pm.Mtot = pm.Mo * pm.Mf;  % Total system magnification
-pm.lmd = 0.43;  % System imaging wavelength (um)
-pm.NA = 0.7;  % System collection NA
+pm.lmd = 0.532;  % System imaging wavelength (um)
+pm.NA = 1.2;  % System collection NA
 pm.grt = pm.Mo * 16.28e-2;  %7.96e-2;  %7.94e-2 * Mo;  %7.91e-2 * Mo;  % Grating line pairs per um after projection to image plane
 pm.yshift = 5;  % y-axis translation correction based on exp. observation (pixel)
 
@@ -49,7 +50,7 @@ tog.auto = 1;  % Toggles automatic center finding for Hilbert transform
 tog.order = 1;  % Sets whether to use +1 (Right) or -1 (left) Fourier spectra
 tog.halo = 0;  % Toggle halo artifact removal for data
 tog.patch2D = 0; % Toggle patchwise 2D filtering of image
-
+tog.selfRef = 2; % Toggle where nonzero value defines level of polynomial order fitting to implement (max 5)
 
 %% Update save label
 svlbl = ['Proc_' svlbl];
@@ -58,15 +59,21 @@ if(tog.halo)
 end
 if(tog.patch2D)
     svlbl = [svlbl '_patch2DFit'];
+elseif(tog.selfRef > 0)
+    svlbl = [svlbl '_selfFit_Poly' num2str(tog.selfRef)];
 else
-    svlbl = [svlbl '_Global2DFit'];
+    svlbl = [svlbl '_Global2DFit_nm'];
 end
 %% Load Background image and extract reference phase, amplitude
 
 for nt = 1:nref
     disp(['Processing Reference Frame ' num2str(nt) '...']);
-    bkgnd = double(imread([reffol '\' lbl_data '.tif']));
-    
+    if(tog.selfRef > 0)
+        bkgnd = double(imread([genfol '\Interferogram\' lbl_data '.png']));
+    else
+        bkgnd = double(imread([genfol '\Background\' lbl_data '.png']));
+    end
+    bkgnd = normImg(bkgnd);
     % Allocate reference image stacks on first reference iteration
     if (nt == 1)
        A_ref = zeros(size(bkgnd));
@@ -89,11 +96,28 @@ for nt = 1:nref
 end
 
 
+
+
 % Obtain average reference image, image size
 P_ref = P_ref/nref;
 A_ref = A_ref/nref;
 sz = size(P_ref);
-clear Phi_f A_f P_nm A_nm fA fP xP yP zP Phi A recon bkgnd x xA yA zA
+
+if(tog.selfRef > 0)
+% % Lowpass filter the reference phase, ax = [-size(A_ref,1)/2:size(A_ref,2)/2-1]';
+x = [-size(A_ref,1)/2:size(A_ref,2)/2-1]';
+[xA,yA,zA] = prepareSurfaceData(x,x,A_ref);
+fA = fit([xA,yA],zA,['poly' num2str(tog.selfRef * 10 + tog.selfRef)]);
+A_ref = reshape(feval(fA, [xA, yA]), [size(A_ref,1), size(A_ref,2)]);
+
+% Filter phase
+[xP,yP,zP] = prepareSurfaceData(x,x,P_ref);
+fP = fit([xP,yP],zP,['poly' num2str(tog.selfRef * 10 + tog.selfRef)]);
+P_ref = reshape(feval(fP, [xP,yP]), [size(P_ref,1), size(P_ref,2)]);
+% % 
+end
+
+clear Phi_f A_f P_nm A_nm fA fP xP yP zP Phi A recon x xA yA zA
 
 %% Load Images and extract phase, amplitude
 for nf = lFOV(1):lFOV(2)
@@ -102,9 +126,9 @@ for nf = lFOV(1):lFOV(2)
         
         % Load image (switch commented out code if you have multiple images in same FOV)
 %         img = double(imread([genfol num2str(nf) '\' lbl_data sprintf('%08d', nm-1) '.tiff']));
-        img = double(imread([genfol num2str(nf) '\' lbl_data '.tif']));
+        img = double(imread([genfol '\Interferogram\' lbl_data '.png']));
 
-
+        img = normImg(img);
         %% Extract phase and amplitude information from images
 
         % Recover complex field

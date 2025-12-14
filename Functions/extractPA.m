@@ -67,14 +67,14 @@ else
     shift = [grt_max, pm.yshift];
 end    
     % Filter out cross-correlation term
-    mask_1 = sqrt(((NX-shift(1))./pk_max).^2 + ((NY+shift(2))./pk_max).^2) <= 1;
+    mask_1 = sqrt(((NX-shift(1))./pk_max).^2 + ((NY-shift(2))./pk_max).^2) <= 1;
     
     % Apply filter to extract cross-correlation signal, shift to image
     % center
-    fimg = circshift(fimg .* mask_1, [shift(2), -tog.order * shift(1)]);
+    fimg = circshift(fimg .* mask_1, [-shift(2), -tog.order * shift(1)]);
     % 
-    % figure(11);
-    % imagesc(log10(abs(fimg)));axis image off;
+    figure(11);
+    imagesc(log10(abs(fimg)));axis image off;
     
     % Apply iFT to obtain complex field
     recon=iFT(fimg);

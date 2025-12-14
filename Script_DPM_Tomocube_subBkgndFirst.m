@@ -18,26 +18,25 @@ addpath('Functions\');  % Adds folder containing relevant processing functions
 %% Folder Name Declarations
 
 % Set data, reference, and save directories
-genfol = ['G:\My Drive\Data\RBC_SCD\220608\25x_430nm_p95_112uW_RBC_']; % Generic folder for raw data location
-reffol = 'G:\My Drive\Data\RBC_SCD\220608\25x_430nm_p95_112uW_Blank_1'; % Folder location for blank/reference image
-svdir = 'G:\My Drive\Data\RBC_SCD\220608\25x_430nm_p95_112uW_RBC_Test_Processed\FOV_'; % save folder location
-svlbl = 'test';  % User-defined label to add to save folder name
+genfol = ['G:\My Drive\Data\Grating Measurements\250902\Raw Data\Wvgd_Lg_1']; % Generic folder for raw data location
+svdir = 'G:\My Drive\Data\Grating Measurements\250902\Proc\Wvgd_Lg_'; % save folder location
+svlbl = 'tomo_2un_subBkfirst';  % User-defined label to add to save folder name
 
-lbl_data = 'Raw';  % Name for raw data measurements (assumed to be identical or the same name with different numbers for all folders used in processing)
-lFOV = [1, 1];  % Set FOV range to process for folder (use [1 1] for processing only first FOV)
+lbl_data = '001';  % Name for raw data measurements (assumed to be identical or the same name with different numbers for all folders used in processing)
+lFOV = [1,1];  % Set FOV range to process for folder (use [1 1] for processing only first FOV)
 nmeas = 1;  % Number of images to process within each FOV folder
 nref = 1;  % Number of reference images to process within the reffol location
 
 %% Variable Declarations
 
 % Microscope parameters
-pm.dx = 4.5;  % x Pixel size at camera plane (um)
-pm.dy = 4.5;  % y Pixel size at camera plane (um)
-pm.Mo = 25;  % Microscope objective magnification
-pm.Mf = 300/75;  % 4F System magnification
+pm.dx = 5.5385;  % x Pixel size at camera plane (um)
+pm.dy = 5.5385;  % y Pixel size at camera plane (um)
+pm.Mo = 58.3;  % Microscope objective magnification
+pm.Mf = 1;  % 4F System magnification
 pm.Mtot = pm.Mo * pm.Mf;  % Total system magnification
-pm.lmd = 0.43;  % System imaging wavelength (um)
-pm.NA = 0.7;  % System collection NA
+pm.lmd = 0.532;  % System imaging wavelength (um)
+pm.NA = 1.2;  % System collection NA
 pm.grt = pm.Mo * 16.28e-2;  %7.96e-2;  %7.94e-2 * Mo;  %7.91e-2 * Mo;  % Grating line pairs per um after projection to image plane
 pm.yshift = 5;  % y-axis translation correction based on exp. observation (pixel)
 
@@ -50,7 +49,6 @@ tog.order = 1;  % Sets whether to use +1 (Right) or -1 (left) Fourier spectra
 tog.halo = 0;  % Toggle halo artifact removal for data
 tog.patch2D = 0; % Toggle patchwise 2D filtering of image
 
-
 %% Update save label
 svlbl = ['Proc_' svlbl];
 if(tog.halo)
@@ -61,39 +59,6 @@ if(tog.patch2D)
 else
     svlbl = [svlbl '_Global2DFit'];
 end
-%% Load Background image and extract reference phase, amplitude
-
-for nt = 1:nref
-    disp(['Processing Reference Frame ' num2str(nt) '...']);
-    bkgnd = double(imread([reffol '\' lbl_data '.tif']));
-    
-    % Allocate reference image stacks on first reference iteration
-    if (nt == 1)
-       A_ref = zeros(size(bkgnd));
-       P_ref = zeros(size(bkgnd));
-       recon_ref = zeros(size(bkgnd));
-    end
-
-    % Extract background field from interferogram
-    [recon, pm.grt, pm.yshift]  = extractPA(bkgnd, k0, pm, tog);
-    
-    %Separate out magnitude
-    A = abs(recon);
-
-    % Separate out and unwrap phase
-    Phi = unwrap2(angle((recon)));
-    
-    % Accumulate absorption, phase to obtain average
-    A_ref = A_ref + A;
-    P_ref = P_ref + Phi;
-end
-
-
-% Obtain average reference image, image size
-P_ref = P_ref/nref;
-A_ref = A_ref/nref;
-sz = size(P_ref);
-clear Phi_f A_f P_nm A_nm fA fP xP yP zP Phi A recon bkgnd x xA yA zA
 
 %% Load Images and extract phase, amplitude
 for nf = lFOV(1):lFOV(2)
@@ -102,7 +67,10 @@ for nf = lFOV(1):lFOV(2)
         
         % Load image (switch commented out code if you have multiple images in same FOV)
 %         img = double(imread([genfol num2str(nf) '\' lbl_data sprintf('%08d', nm-1) '.tiff']));
-        img = double(imread([genfol num2str(nf) '\' lbl_data '.tif']));
+        bkgnd = double(imread([genfol '\Background\' lbl_data '.png']));
+        img = double(imread([genfol '\Interferogram\' lbl_data '.png']));
+        
+        img = img - bkgnd;
 
 
         %% Extract phase and amplitude information from images
@@ -116,9 +84,9 @@ for nf = lFOV(1):lFOV(2)
         % Separate out and unwrap phase
         Phi = unwrap2(angle((recon)));
 
-        % Remove reference information
-        Phi = real(Phi - P_ref);
-        A =-log(A./A_ref);      
+        % % Remove reference information
+        % Phi = real(Phi - P_ref);
+        % A =-log(A./A_ref);      
         
     % Toggle global 2D fit or patchwise 2D fitting for background removal
     if(tog.patch2D)
@@ -147,7 +115,7 @@ for nf = lFOV(1):lFOV(2)
         % Apply 2D polynomial filter to remove low-frequency features
         [Phi, A] = polyfit_2D(Phi, A);
     end
-
+        Phi = unwrap2(Phi);
         Phi_h = removeHalo(Phi, pm, 0.005);
         A_h = removeHalo(A, pm, 0.005);
 
